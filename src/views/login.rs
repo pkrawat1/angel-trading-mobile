@@ -8,41 +8,50 @@ pub fn Login() -> Element {
     let mut totp = use_signal(|| "".to_string());
 
     rsx! {
-        div {
-            id: "login",
+        div { class: "flex justify-center", id: "login",
             h1 { "Login" }
             form {
-                onsubmit: move |event| async move {
-                    event.prevent_default();
-                    let response = login_server(username(), password(), totp()).await;
-                    match response {
-                        Ok(message) => {
-                          tracing::info!("Login successful! {message}");
+                div {
+                    class: "mt-10 space-y-8 bg-white dark:bg-transparent dark:text-gray-200",
+                    onsubmit: move |event| async move {
+                        event.prevent_default();
+                        let response = login_server(username(), password(), totp()).await;
+                        match response {
+                            Ok(message) => {
+                                tracing::info!("Login successful! {message}");
+                            }
+                            Err(error) => {
+                                tracing::error!("Login failed! {error}");
+                            }
                         }
-                        Err(error) => {
-                          tracing::error!("Login failed! {error}");
-                        }
+                    },
+                    input {
+                        r#type: "text",
+                        class: "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6",
+                        placeholder: "Username",class: if true { "border-zinc-300 focus:border-zinc-400 dark:border-zinc-900 dark:focus:border-zinc-800" },
+                        value: "{username}",
+                        oninput: move |event| username.set(event.value()),
+                        "dark:bg-gray-900 dark:text-gray-200"
                     }
-                },
-                input {
-                    type: "text",
-                    placeholder: "Username",
-                    value: "{username}" ,
-                    oninput: move |event| username.set(event.value())
+                    input {
+                        r#type: "password",
+                        class: "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6",
+                        placeholder: "Password",class: if true { "border-zinc-300 focus:border-zinc-400 dark:border-zinc-900 dark:focus:border-zinc-800" },
+                        value: password,
+                        oninput: move |event| password.set(event.value()),
+                    }
+                    input {
+                        r#type: "totp",
+                        class: "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6 border border-zinc-300 dark:bg-gray-900 dark:text-gray-200",
+                        class: if true { "border-zinc-300 focus:border-zinc-400 dark:border-zinc-900 dark:focus:border-zinc-800" },
+                        placeholder: "TOTP",
+                        value: totp,
+                        oninput: move |event| totp.set(event.value()),
+                    }
+                    div { class: "mt-2 flex items-center justify-between gap-6",
+                        button { "Login" }
+                    }
                 }
-                input {
-                    type: "password",
-                    placeholder: "Password",
-                    value: password,
-                    oninput: move |event| password.set(event.value())
-                }
-                input {
-                  type: "totp",
-                  placeholder: "TOTP",
-                  value: totp,
-                  oninput: move |event| totp.set(event.value())
-                }
-                button { "Login" }
             }
         }
     }
