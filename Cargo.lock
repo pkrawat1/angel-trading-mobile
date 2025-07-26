@@ -30,12 +30,15 @@ dependencies = [
 name = "angel_trading"
 version = "0.1.0"
 dependencies = [
+ "daisy_rsx",
  "dioxus",
  "dioxus-logger",
  "reqwest",
  "serde",
  "serde_json",
  "tracing",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -54,6 +57,12 @@ dependencies = [
  "url",
  "zbus",
 ]
+
+[[package]]
+name = "askama_escape"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "619743e34b5ba4e9703bba34deac3427c72507c7159f5fd030aea8cac0cfe341"
 
 [[package]]
 name = "async-broadcast"
@@ -690,6 +699,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "daisy_rsx"
+version = "0.1.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8a1573e666433717f3e7e4e6be420a89bb584b1b233fbc431e2ae0b43fdd9d4"
+dependencies = [
+ "dioxus",
+ "dioxus-ssr",
+]
+
+[[package]]
 name = "darling"
 version = "0.20.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1170,6 +1189,18 @@ dependencies = [
  "rustc-hash",
  "tracing",
  "warnings",
+]
+
+[[package]]
+name = "dioxus-ssr"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38e1fac097e71ccec4e9e15d44b68393be2981276e42170703180bceb0b6f122"
+dependencies = [
+ "askama_escape",
+ "dioxus-core",
+ "dioxus-core-types",
+ "rustc-hash",
 ]
 
 [[package]]

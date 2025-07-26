@@ -1,56 +1,108 @@
+use crate::components::{Button, FormActions, Input, SimpleForm};
 use dioxus::prelude::*;
 use std::env;
 
 #[component]
 pub fn Login() -> Element {
-    let mut username = use_signal(|| "".to_string());
+    let mut user = use_signal(|| "".to_string());
     let mut password = use_signal(|| "".to_string());
     let mut totp = use_signal(|| "".to_string());
+    let mut error_message = use_signal(|| None::<String>);
 
     rsx! {
-        div { class: "flex justify-center", id: "login",
-            h1 { "Login" }
-            form {
-                onsubmit: move |event| async move {
+        div { class: "flex justify-center",
+            SimpleForm {
+                onsubmit: move |event: FormEvent| {
                     event.prevent_default();
-                    let response = login_server(username(), password(), totp()).await;
-                    match response {
-                        Ok(message) => {
-                            tracing::info!("Login successful! {message}");
-                        }
-                        Err(error) => {
-                            tracing::error!("Login failed! {error}");
-                        }
+
+                    let user_val = user();
+                    let password_val = password();
+                    let totp_val = totp();
+
+                    // Validate required fields
+                    if user_val.is_empty() || password_val.is_empty() || totp_val.is_empty() || totp_val.len() != 6 {
+                        error_message.set(Some("Invalid credentials".to_string()));
+                        return;
                     }
+
+                    // All fields are valid, proceed with login
+                    spawn(async move {
+                        match login_server(user_val.clone(), password_val.clone(), totp_val.clone()).await {
+                            Ok(_) => {
+                                // Redirect to session endpoint like Phoenix implementation
+                                let redirect_url = format!("/session/{}/{}/{}", user_val, password_val, totp_val);
+                                tracing::info!("Login successful, redirecting to: {}", redirect_url);
+                                // For now, just log success - actual redirect would be implemented with router
+                            }
+                            Err(error) => {
+                                tracing::error!("Login failed: {error}");
+                                error_message.set(Some("Login failed".to_string()));
+                            }
+                        }
+                    });
                 },
-                div { class: "mt-10 space-y-8 bg-white dark:bg-transparent dark:text-gray-200",
-                    input {
-                        r#type: "text",
-                        class: "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6",
-                        placeholder: "Username",
-                        class: if true { "border-zinc-300 focus:border-zinc-400 dark:border-zinc-900 dark:focus:border-zinc-800" },
-                        value: "{username}",
-                        oninput: move |event| username.set(event.value()),
-                        "dark:bg-gray-900 dark:text-gray-200"
+
+                Input {
+                    field_name: "user",
+                    value: user(),
+                    placeholder: "User",
+                    required: true,
+                    oninput: move |event: FormEvent| {
+                        user.set(event.data.value());
                     }
-                    input {
-                        r#type: "password",
-                        class: "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6",
-                        placeholder: "Password",
-                        class: if true { "border-zinc-300 focus:border-zinc-400 dark:border-zinc-900 dark:focus:border-zinc-800" },
-                        value: password,
-                        oninput: move |event| password.set(event.value()),
+                }
+
+                Input {
+                    field_name: "password",
+                    input_type: "password",
+                    value: password(),
+                    placeholder: "Password",
+                    maxlength: "32",
+                    minlength: "8",
+                    required: true,
+                    oninput: move |event: FormEvent| {
+                        password.set(event.data.value());
                     }
-                    input {
-                        r#type: "totp",
-                        class: "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6 border border-zinc-300 dark:bg-gray-900 dark:text-gray-200",
-                        class: if true { "border-zinc-300 focus:border-zinc-400 dark:border-zinc-900 dark:focus:border-zinc-800" },
-                        placeholder: "TOTP",
-                        value: totp,
-                        oninput: move |event| totp.set(event.value()),
+                }
+
+                Input {
+                    field_name: "totp",
+                    value: totp(),
+                    placeholder: "6 Digit TOTP",
+                    maxlength: "6",
+                    minlength: "6",
+                    pattern: "[0-9]{6}",
+                    required: true,
+                    oninput: move |event: FormEvent| {
+                        totp.set(event.data.value());
                     }
-                    div { class: "mt-2 flex items-center justify-between gap-6",
-                        button { "Login" }
+                }
+
+                FormActions {
+                    Button {
+                        button_type: "submit",
+                        class: "btn w-full rounded-full",
+                        "LOGIN"
+                    }
+                }
+            }
+
+            // Error display (replicating Phoenix flash message styling)
+            if let Some(error) = error_message() {
+                div {
+                    class: "fixed top-2 right-2 w-80 sm:w-96 z-50 rounded-lg p-3 ring-1 bg-rose-50 text-rose-900 shadow-md ring-rose-500 fill-rose-900",
+                    role: "alert",
+                    p {
+                        class: "flex items-center gap-1.5 text-sm font-semibold leading-6",
+                        span { class: "h-4 w-4", "⚠" }
+                        "Error!"
+                    }
+                    p { class: "mt-2 text-sm leading-5", "{error}" }
+                    button {
+                        r#type: "button",
+                        class: "group absolute top-1 right-1 p-2",
+                        onclick: move |_: MouseEvent| error_message.set(None),
+                        "×"
                     }
                 }
             }
@@ -70,21 +122,28 @@ struct LoginApiResponse {
     status: bool,
     message: String,
     errorcode: String,
-    data: LoginApiResponseData,
+    data: Option<LoginApiResponseData>,
 }
 
 #[derive(Debug, serde::Deserialize)]
 struct LoginApiResponseData {
-    jwtToken: String,
-    refreshToken: String,
-    feedToken: String,
+    #[serde(rename = "jwtToken")]
+    jwt_token: String,
+    #[serde(rename = "refreshToken")]
+    refresh_token: String,
+    #[serde(rename = "feedToken")]
+    feed_token: String,
     state: String,
 }
 
 #[server(LoginServer)]
-async fn login_server(clientcode: String, password: String, totp: String) -> Result<String, ServerFnError> {
-    let base_url = format!("https://apiconnect.angelbroking.com/");
-    let url = format!("rest/auth/angelbroking/user/v1/loginByPassword");
+async fn login_server(
+    clientcode: String,
+    password: String,
+    totp: String,
+) -> Result<String, ServerFnError> {
+    let base_url = "https://apiconnect.angelbroking.com/";
+    let url = "rest/auth/angelbroking/user/v1/loginByPassword";
     let client = reqwest::Client::new();
 
     let mut headers = reqwest::header::HeaderMap::new();
@@ -92,23 +151,36 @@ async fn login_server(clientcode: String, password: String, totp: String) -> Res
     headers.insert("Accept", "application/json".parse().unwrap());
     headers.insert("X-UserType", "USER".parse().unwrap());
     headers.insert("X-SourceID", "WEB".parse().unwrap());
-    headers.insert("X-ClientLocalIP", env::var("LOCAL_IP").unwrap().parse().unwrap());
-    headers.insert("X-ClientPublicIP", env::var("PUBLIC_IP").unwrap().parse().unwrap());
-    headers.insert("X-MACAddress", env::var("MAC_ADDRESS").unwrap().parse().unwrap());
-    headers.insert("X-PrivateKey", env::var("API_KEY").unwrap().parse().unwrap());
+    headers.insert(
+        "X-ClientLocalIP",
+        env::var("LOCAL_IP").unwrap_or_default().parse().unwrap(),
+    );
+    headers.insert(
+        "X-ClientPublicIP",
+        env::var("PUBLIC_IP").unwrap_or_default().parse().unwrap(),
+    );
+    headers.insert(
+        "X-MACAddress",
+        env::var("MAC_ADDRESS").unwrap_or_default().parse().unwrap(),
+    );
+    headers.insert(
+        "X-PrivateKey",
+        env::var("API_KEY").unwrap_or_default().parse().unwrap(),
+    );
 
     let request = LoginApiRequest {
         clientcode,
         password,
         totp,
     };
-    let response = client.post(base_url + &url)
+
+    let response = client
+        .post(&format!("{}{}", base_url, url))
         .headers(headers)
         .json(&request)
         .send()
         .await?;
 
-    // log entire request
     tracing::info!("Request: {:?}", request);
 
     let response_text = response.text().await?;
@@ -118,14 +190,16 @@ async fn login_server(clientcode: String, password: String, totp: String) -> Res
         Ok(response_json) => {
             tracing::info!("Parsed Response JSON: {:?}", response_json);
             if response_json.status {
-                Ok(format!("Login successful!"))
+                Ok("Login successful!".to_string())
             } else {
                 Err(ServerFnError::ServerError(response_json.message))
             }
         }
         Err(e) => {
             tracing::error!("Failed to parse JSON: {:?}", e);
-            Err(ServerFnError::ServerError("Failed to parse server response".to_string()))
+            Err(ServerFnError::ServerError(
+                "Failed to parse server response".to_string(),
+            ))
         }
     }
 }

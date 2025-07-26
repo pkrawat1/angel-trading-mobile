@@ -25,14 +25,12 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-    // Build cool things ✌️
-
     rsx! {
         // Global app resources
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "stylesheet", href: TAILWIND_CSS }
 
-        body { class: "relative h-full w-full overflow-hidden bg-white dark:bg-gray-950 antialiased",
+        body { class: "relative h-full w-full overflow-hidden",
             main { class: "relative h-full w-full flex-1 overflow-hidden transition-width mx-auto sm:py-6",
                 header { class: "sticky top-0 z-10 bg-white dark:bg-gray-950 m-auto max-w-6xl px-4 sm:px-6 lg:px-8",
                     div { class: "flex items-center justify-between border-b border-zinc-100 py-2 text-sm dark:border-zinc-800",
