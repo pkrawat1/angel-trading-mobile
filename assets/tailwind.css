@@ -324,6 +324,9 @@
   .border-zinc-300 {
     border-color: var(--color-zinc-300);
   }
+  .bg-gray-950 {
+    background-color: var(--color-gray-950);
+  }
   .bg-white {
     background-color: var(--color-white);
   }
