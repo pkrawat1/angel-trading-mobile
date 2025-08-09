@@ -39,6 +39,7 @@ dependencies = [
  "daisy_rsx",
  "dioxus",
  "dioxus-logger",
+ "js-sys",
  "lru",
  "reqwest",
  "serde",

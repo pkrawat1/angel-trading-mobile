@@ -22,6 +22,7 @@ web-sys = { version = "0.3", features = [
     "Storage",
 ] }
 wasm-bindgen = "0.2"
+js-sys = "0.3"
 daisy_rsx = "0.1"
 
 [features]

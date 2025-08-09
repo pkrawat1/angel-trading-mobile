@@ -86,6 +86,7 @@ fn AppHeader() -> Element {
                             "Open Demat Account"
                         }
                     }
+
                     if is_authenticated {
                         button {
                             class: "px-2 py-1 text-red-500 hover:text-red-700 cursor-pointer",
@@ -98,6 +99,8 @@ fn AppHeader() -> Element {
         }
     }
 }
+
+
 
 #[component]
 fn Home() -> Element {

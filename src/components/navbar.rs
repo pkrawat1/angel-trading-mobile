@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 #[component]
 pub fn Navbar() -> Element {
     let auth = use_auth();
-    
+
     rsx! {
         div {
             id: "navbar",
