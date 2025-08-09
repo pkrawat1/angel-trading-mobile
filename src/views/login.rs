@@ -1,3 +1,4 @@
+use crate::auth::{use_auth, use_redirect_if_authenticated, AuthTokens};
 use crate::components::{Button, FormActions, Input, SimpleForm};
 use dioxus::prelude::*;
 use std::env;
@@ -8,6 +9,13 @@ pub fn Login() -> Element {
     let mut password = use_signal(|| "".to_string());
     let mut totp = use_signal(|| "".to_string());
     let mut error_message = use_signal(|| None::<String>);
+    let mut is_loading = use_signal(|| false);
+
+    let auth = use_auth();
+    let nav = use_navigator();
+
+    // Redirect if already authenticated
+    use_redirect_if_authenticated();
 
     rsx! {
         div { class: "flex justify-center",
@@ -25,20 +33,36 @@ pub fn Login() -> Element {
                         return;
                     }
 
+                    // Set loading state
+                    is_loading.set(true);
+                    error_message.set(None);
+
                     // All fields are valid, proceed with login
+                    let mut auth = auth.clone();
+                    let nav = nav.clone();
                     spawn(async move {
                         match login_server(user_val.clone(), password_val.clone(), totp_val.clone()).await {
-                            Ok(_) => {
-                                // Redirect to session endpoint like Phoenix implementation
-                                let redirect_url = format!("/session/{}/{}/{}", user_val, password_val, totp_val);
-                                tracing::info!("Login successful, redirecting to: {}", redirect_url);
-                                // For now, just log success - actual redirect would be implemented with router
+                            Ok(tokens) => {
+                                tracing::info!("Login successful, storing tokens");
+
+                                // Store tokens using auth context
+                                match auth.login(tokens).await {
+                                    Ok(_) => {
+                                        tracing::info!("Tokens stored successfully, redirecting to dashboard");
+                                        nav.push("/dashboard");
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Failed to store tokens: {}", e);
+                                        error_message.set(Some("Failed to save session".to_string()));
+                                    }
+                                }
                             }
                             Err(error) => {
                                 tracing::error!("Login failed: {error}");
                                 error_message.set(Some("Login failed".to_string()));
                             }
                         }
+                        is_loading.set(false);
                     });
                 },
 
@@ -71,7 +95,6 @@ pub fn Login() -> Element {
                     placeholder: "6 Digit TOTP",
                     maxlength: "6",
                     minlength: "6",
-                    pattern: "[0-9]{6}",
                     required: true,
                     oninput: move |event: FormEvent| {
                         totp.set(event.data.value());
@@ -82,7 +105,12 @@ pub fn Login() -> Element {
                     Button {
                         button_type: "submit",
                         class: "btn w-full rounded-full",
-                        "LOGIN"
+                        disabled: is_loading(),
+                        if is_loading() {
+                            "LOGGING IN..."
+                        } else {
+                            "LOGIN"
+                        }
                     }
                 }
             }
@@ -133,7 +161,7 @@ struct LoginApiResponseData {
     refresh_token: String,
     #[serde(rename = "feedToken")]
     feed_token: String,
-    state: String,
+    state: Option<String>,
 }
 
 #[server(LoginServer)]
@@ -141,7 +169,7 @@ async fn login_server(
     clientcode: String,
     password: String,
     totp: String,
-) -> Result<String, ServerFnError> {
+) -> Result<AuthTokens, ServerFnError> {
     let base_url = "https://apiconnect.angelbroking.com/";
     let url = "rest/auth/angelbroking/user/v1/loginByPassword";
     let client = reqwest::Client::new();
@@ -169,7 +197,7 @@ async fn login_server(
     );
 
     let request = LoginApiRequest {
-        clientcode,
+        clientcode: clientcode.clone(),
         password,
         totp,
     };
@@ -190,7 +218,17 @@ async fn login_server(
         Ok(response_json) => {
             tracing::info!("Parsed Response JSON: {:?}", response_json);
             if response_json.status {
-                Ok("Login successful!".to_string())
+                if let Some(data) = response_json.data {
+                    let tokens = AuthTokens {
+                        jwt_token: data.jwt_token,
+                        refresh_token: data.refresh_token,
+                        feed_token: data.feed_token,
+                        user_id: clientcode,
+                    };
+                    Ok(tokens)
+                } else {
+                    Err(ServerFnError::ServerError("No token data received".to_string()))
+                }
             } else {
                 Err(ServerFnError::ServerError(response_json.message))
             }

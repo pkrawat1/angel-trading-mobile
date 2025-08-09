@@ -64,6 +64,7 @@ pub fn Button(
     children: Element,
     #[props(default = "button".to_string())] button_type: String,
     #[props(default = "".to_string())] class: String,
+    #[props(default = false)] disabled: bool,
 ) -> Element {
     let base_classes = "phx-submit-loading:opacity-75 rounded-lg bg-zinc-900 hover:bg-zinc-700 py-2 px-3 text-sm font-semibold leading-6 text-white active:text-white/80";
     let combined_classes = if class.is_empty() {
@@ -76,6 +77,7 @@ pub fn Button(
         button {
             r#type: button_type,
             class: combined_classes,
+            disabled: disabled,
             {children}
         }
     }
