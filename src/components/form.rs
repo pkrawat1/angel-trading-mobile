@@ -119,8 +119,9 @@ pub fn Label(
 pub fn ErrorMessage(
     message: Option<String>,
     #[props(default = "".to_string())] class: String,
+    #[props(default = false)] dismissible: bool,
 ) -> Element {
-    let base_classes = "mt-3 flex gap-3 text-sm leading-6 text-rose-600 phx-no-feedback:hidden";
+    let base_classes = "alert alert-error mt-3";
     let combined_classes = if class.is_empty() {
         base_classes.to_string()
     } else {
@@ -129,10 +130,217 @@ pub fn ErrorMessage(
 
     if let Some(msg) = message {
         rsx! {
-            p {
+            div {
+                role: "alert",
                 class: combined_classes,
-                span { class: "h-4 w-4", "⚠" }
-                "{msg}"
+                // Error icon SVG following DaisyUI pattern
+                svg {
+                    xmlns: "http://www.w3.org/2000/svg",
+                    class: "h-6 w-6 shrink-0 stroke-current",
+                    fill: "none",
+                    view_box: "0 0 24 24",
+                    path {
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                        stroke_width: "2",
+                        d: "M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    }
+                }
+                span { "{msg}" }
+                // Optional close button for dismissible errors
+                if dismissible {
+                    button {
+                        class: "btn btn-sm btn-ghost",
+                        "aria-label": "Close",
+                        svg {
+                            xmlns: "http://www.w3.org/2000/svg",
+                            class: "h-4 w-4",
+                            fill: "none",
+                            view_box: "0 0 24 24",
+                            stroke: "currentColor",
+                            path {
+                                stroke_linecap: "round",
+                                stroke_linejoin: "round",
+                                stroke_width: "2",
+                                d: "M6 18L18 6M6 6l12 12"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        rsx! { div {} }
+    }
+}
+
+#[component]
+pub fn SuccessMessage(
+    message: Option<String>,
+    #[props(default = "".to_string())] class: String,
+    #[props(default = false)] dismissible: bool,
+) -> Element {
+    let base_classes = "alert alert-success mt-3";
+    let combined_classes = if class.is_empty() {
+        base_classes.to_string()
+    } else {
+        format!("{} {}", base_classes, class)
+    };
+
+    if let Some(msg) = message {
+        rsx! {
+            div {
+                role: "alert",
+                class: combined_classes,
+                // Success icon SVG following DaisyUI pattern
+                svg {
+                    xmlns: "http://www.w3.org/2000/svg",
+                    class: "h-6 w-6 shrink-0 stroke-current",
+                    fill: "none",
+                    view_box: "0 0 24 24",
+                    path {
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                        stroke_width: "2",
+                        d: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    }
+                }
+                span { "{msg}" }
+                if dismissible {
+                    button {
+                        class: "btn btn-sm btn-ghost",
+                        "aria-label": "Close",
+                        svg {
+                            xmlns: "http://www.w3.org/2000/svg",
+                            class: "h-4 w-4",
+                            fill: "none",
+                            view_box: "0 0 24 24",
+                            stroke: "currentColor",
+                            path {
+                                stroke_linecap: "round",
+                                stroke_linejoin: "round",
+                                stroke_width: "2",
+                                d: "M6 18L18 6M6 6l12 12"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        rsx! { div {} }
+    }
+}
+
+#[component]
+pub fn WarningMessage(
+    message: Option<String>,
+    #[props(default = "".to_string())] class: String,
+    #[props(default = false)] dismissible: bool,
+) -> Element {
+    let base_classes = "alert alert-warning mt-3";
+    let combined_classes = if class.is_empty() {
+        base_classes.to_string()
+    } else {
+        format!("{} {}", base_classes, class)
+    };
+
+    if let Some(msg) = message {
+        rsx! {
+            div {
+                role: "alert",
+                class: combined_classes,
+                // Warning icon SVG following DaisyUI pattern
+                svg {
+                    xmlns: "http://www.w3.org/2000/svg",
+                    class: "h-6 w-6 shrink-0 stroke-current",
+                    fill: "none",
+                    view_box: "0 0 24 24",
+                    path {
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                        stroke_width: "2",
+                        d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    }
+                }
+                span { "{msg}" }
+                if dismissible {
+                    button {
+                        class: "btn btn-sm btn-ghost",
+                        "aria-label": "Close",
+                        svg {
+                            xmlns: "http://www.w3.org/2000/svg",
+                            class: "h-4 w-4",
+                            fill: "none",
+                            view_box: "0 0 24 24",
+                            stroke: "currentColor",
+                            path {
+                                stroke_linecap: "round",
+                                stroke_linejoin: "round",
+                                stroke_width: "2",
+                                d: "M6 18L18 6M6 6l12 12"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        rsx! { div {} }
+    }
+}
+
+#[component]
+pub fn InfoMessage(
+    message: Option<String>,
+    #[props(default = "".to_string())] class: String,
+    #[props(default = false)] dismissible: bool,
+) -> Element {
+    let base_classes = "alert alert-info mt-3";
+    let combined_classes = if class.is_empty() {
+        base_classes.to_string()
+    } else {
+        format!("{} {}", base_classes, class)
+    };
+
+    if let Some(msg) = message {
+        rsx! {
+            div {
+                role: "alert",
+                class: combined_classes,
+                // Info icon SVG following DaisyUI pattern
+                svg {
+                    xmlns: "http://www.w3.org/2000/svg",
+                    class: "h-6 w-6 shrink-0 stroke-current",
+                    fill: "none",
+                    view_box: "0 0 24 24",
+                    path {
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                        stroke_width: "2",
+                        d: "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    }
+                }
+                span { "{msg}" }
+                if dismissible {
+                    button {
+                        class: "btn btn-sm btn-ghost",
+                        "aria-label": "Close",
+                        svg {
+                            xmlns: "http://www.w3.org/2000/svg",
+                            class: "h-4 w-4",
+                            fill: "none",
+                            view_box: "0 0 24 24",
+                            stroke: "currentColor",
+                            path {
+                                stroke_linecap: "round",
+                                stroke_linejoin: "round",
+                                stroke_width: "2",
+                                d: "M6 18L18 6M6 6l12 12"
+                            }
+                        }
+                    }
+                }
             }
         }
     } else {

@@ -1,5 +1,5 @@
 use crate::auth::{use_auth, use_redirect_if_authenticated, AuthTokens};
-use crate::components::{Button, FormActions, Input, SimpleForm};
+use crate::components::{Button, FormActions, Input, SimpleForm, ErrorMessage};
 use dioxus::prelude::*;
 use std::env;
 
@@ -115,17 +115,14 @@ pub fn Login() -> Element {
                 }
             }
 
-            // Error display (replicating Phoenix flash message styling)
+            // Error display using ErrorMessage component with close button
             if let Some(error) = error_message() {
                 div {
-                    class: "fixed top-2 right-2 w-80 sm:w-96 z-50 rounded-lg p-3 ring-1 bg-rose-50 text-rose-900 shadow-md ring-rose-500 fill-rose-900",
-                    role: "alert",
-                    p {
-                        class: "flex items-center gap-1.5 text-sm font-semibold leading-6",
-                        span { class: "h-4 w-4", "⚠" }
-                        "Error!"
+                    class: "fixed top-2 right-2 w-80 sm:w-96 z-50",
+                    ErrorMessage {
+                        message: Some(error.clone()),
+                        class: "".to_string(),
                     }
-                    p { class: "mt-2 text-sm leading-5", "{error}" }
                     button {
                         r#type: "button",
                         class: "group absolute top-1 right-1 p-2",
