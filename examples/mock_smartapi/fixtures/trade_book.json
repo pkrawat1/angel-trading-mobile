@@ -1,0 +1,42 @@
+[
+  {
+    "exchange": "NSE",
+    "producttype": "INTRADAY",
+    "tradingsymbol": "INFY-EQ",
+    "instrumenttype": "",
+    "symbolgroup": "EQ",
+    "strikeprice": "-1",
+    "optiontype": "",
+    "expirydate": "",
+    "marketlot": "1",
+    "precision": "2",
+    "multiplier": "-1",
+    "tradevalue": "7376.75",
+    "transactiontype": "BUY",
+    "fillprice": "1475.35",
+    "fillsize": "5",
+    "orderid": "261016000123390",
+    "fillid": "50123456",
+    "filltime": "09:41:27"
+  },
+  {
+    "exchange": "NSE",
+    "producttype": "DELIVERY",
+    "tradingsymbol": "SBIN-EQ",
+    "instrumenttype": "",
+    "symbolgroup": "EQ",
+    "strikeprice": "-1",
+    "optiontype": "",
+    "expirydate": "",
+    "marketlot": "1",
+    "precision": "2",
+    "multiplier": "-1",
+    "tradevalue": "4051.00",
+    "transactiontype": "SELL",
+    "fillprice": "810.20",
+    "fillsize": "5",
+    "orderid": "261016000123366",
+    "fillid": "50123311",
+    "filltime": "09:20:05"
+  }
+]

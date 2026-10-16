@@ -591,3 +591,6 @@ impl Charges {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

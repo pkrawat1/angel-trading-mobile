@@ -131,7 +131,7 @@ fn HoldingRow(holding: Holding) -> Element {
     let ltp = util::price(holding.ltp);
     let change = util::signed_pct(holding.ltp_change_pct());
     let change_tone = util::tone(holding.ltp_change_pct());
-    let symbol = holding.trading_symbol.clone();
+    let symbol = util::display_symbol(&holding.trading_symbol).to_string();
 
     rsx! {
         Link {

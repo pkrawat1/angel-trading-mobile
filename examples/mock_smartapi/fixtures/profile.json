@@ -1,0 +1,10 @@
+{
+  "clientcode": "MOCK123",
+  "name": "Mock Trader",
+  "email": "",
+  "mobileno": "",
+  "exchanges": ["nse_cm", "bse_cm", "nse_fo"],
+  "products": ["MARGIN", "MIS", "NRML", "CNC", "CO", "BO"],
+  "lastlogintime": "",
+  "brokerid": "B2C"
+}

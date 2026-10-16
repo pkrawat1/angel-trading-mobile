@@ -173,7 +173,7 @@ fn MoverRow(holding: Holding) -> Element {
                 symbol_token: holding.symbol_token.clone(),
             },
             class: "flex items-center justify-between py-2",
-            span { class: "font-medium", "{holding.trading_symbol}" }
+            span { class: "font-medium", "{util::display_symbol(&holding.trading_symbol)}" }
             span { class: "text-right tabular-nums",
                 span { class: "mr-3", "{ltp}" }
                 span { class: "{tone}", "{pct}" }

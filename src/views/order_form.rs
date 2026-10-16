@@ -206,7 +206,10 @@ pub fn OrderEdit(order_id: String) -> Element {
 fn OrderForm(init: Init) -> Element {
     let auth = crate::auth::use_auth();
     let is_edit = init.order_id.is_some();
-    let symbol = init.instrument.trading_symbol.clone();
+    // A modification keeps the order's variety, and the stop-loss types need
+    // the STOPLOSS variety, so an edit offers only the types its variety takes.
+    let stop_loss_variety = init.variety.as_deref() == Some("STOPLOSS");
+    let symbol = util::display_symbol(&init.instrument.trading_symbol).to_string();
     let exchange = init.instrument.exchange.clone();
     let ltp = init.ltp;
 
@@ -233,11 +236,15 @@ fn OrderForm(init: Init) -> Element {
         let order_id = ack.order_id.clone();
         return rsx! {
             div { class: "flex flex-col gap-4 p-4",
-                div { role: "alert", class: "alert alert-success alert-soft flex-col items-start",
-                    span { class: "font-semibold", "Order {verb}" }
-                    span { class: "text-sm", "Order id {order_id}" }
-                    span { class: "text-xs opacity-80",
-                        "The exchange may still reject this order. Check its status in Orders."
+                // DaisyUI lays an alert's children out as columns, so the
+                // lines share one child to stack on a phone.
+                div { role: "alert", class: "alert alert-success alert-soft",
+                    div { class: "flex flex-col gap-1",
+                        span { class: "font-semibold", "Order {verb}" }
+                        span { class: "text-sm", "Order id {order_id}" }
+                        span { class: "text-xs opacity-80",
+                            "The exchange may still reject this order. Check its status in Orders."
+                        }
                     }
                 }
                 Link { to: Route::Orders {}, class: "btn btn-primary", "View orders" }
@@ -362,7 +369,7 @@ fn OrderForm(init: Init) -> Element {
                         button {
                             key: "{value}",
                             r#type: "button",
-                            disabled: busy(),
+                            disabled: busy() || (is_edit && needs_trigger(value) != stop_loss_variety),
                             class: if order_type() == value { "join-item btn btn-sm flex-1 btn-primary" } else { "join-item btn btn-sm flex-1" },
                             onclick: move |_| order_type.set(value.to_string()),
                             "{label}"

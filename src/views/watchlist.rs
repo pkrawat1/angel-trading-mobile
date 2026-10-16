@@ -22,10 +22,6 @@ fn same(a: &Instrument, b: &Instrument) -> bool {
     a.exchange == b.exchange && a.symbol_token == b.symbol_token
 }
 
-fn display_symbol(trading_symbol: &str) -> &str {
-    trading_symbol.split('-').next().unwrap_or(trading_symbol)
-}
-
 fn persist(list: &[Instrument]) {
     // A failed write only loses persistence; the in-memory list stays usable.
     let _ = storage::save(STORAGE_KEY, &list.to_vec());
@@ -214,7 +210,7 @@ pub fn Watchlist() -> Element {
                             WatchRow {
                                 key: "{item.exchange}-{item.symbol_token}",
                                 item: item.clone(),
-                                quote: q_snapshot.iter().find(|q| q.symbol_token == item.symbol_token).cloned(),
+                                quote: q_snapshot.iter().find(|q| same(&q.instrument(), item)).cloned(),
                                 on_remove: toggle,
                             }
                         }
@@ -227,7 +223,7 @@ pub fn Watchlist() -> Element {
 
 #[component]
 fn SearchRow(item: Instrument, added: bool, on_toggle: EventHandler<Instrument>) -> Element {
-    let symbol = display_symbol(&item.trading_symbol).to_string();
+    let symbol = util::display_symbol(&item.trading_symbol).to_string();
     let exchange = item.exchange.clone();
     let label = if added { "Remove from watchlist" } else { "Add to watchlist" };
     let icon = if added { "−" } else { "+" };
@@ -250,7 +246,7 @@ fn SearchRow(item: Instrument, added: bool, on_toggle: EventHandler<Instrument>)
 
 #[component]
 fn WatchRow(item: Instrument, quote: Option<Quote>, on_remove: EventHandler<Instrument>) -> Element {
-    let symbol = display_symbol(&item.trading_symbol).to_string();
+    let symbol = util::display_symbol(&item.trading_symbol).to_string();
     let exchange = item.exchange.clone();
     let to = Route::QuoteDetail {
         exchange: item.exchange.clone(),

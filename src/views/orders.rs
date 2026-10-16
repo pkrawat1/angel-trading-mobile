@@ -15,11 +15,6 @@ enum Tab {
     Trades,
 }
 
-/// "RELIANCE-EQ" shows as "RELIANCE", as on the web app.
-fn short_symbol(symbol: &str) -> String {
-    symbol.split('-').next().unwrap_or(symbol).to_string()
-}
-
 fn side_badge(side: &str) -> &'static str {
     if side.eq_ignore_ascii_case("SELL") {
         "badge badge-error badge-soft badge-sm"
@@ -108,7 +103,7 @@ pub fn Orders() -> Element {
 
 #[component]
 fn SymbolLink(exchange: String, symbol_token: String, symbol: String) -> Element {
-    let label = short_symbol(&symbol);
+    let label = util::display_symbol(&symbol).to_string();
     rsx! {
         Link {
             to: Route::QuoteDetail { exchange: exchange.clone(), symbol_token: symbol_token.clone() },
@@ -158,7 +153,7 @@ fn OpenOrderCard(order: Order, on_result: EventHandler<(bool, String)>) -> Eleme
     let price = order_price_label(&order);
     let filled = format!("{}/{} shares", order.filled_shares, order.quantity);
     let kind = format!("{} · {}", order.order_type, order.product_type);
-    let symbol_short = short_symbol(&order.trading_symbol);
+    let symbol_short = util::display_symbol(&order.trading_symbol).to_string();
 
     let variety = order.variety.clone();
     let order_id = order.order_id.clone();
@@ -421,7 +416,7 @@ fn TradeCard(trade: Trade) -> Element {
             div { class: "card-body gap-2 p-4",
                 div { class: "flex items-center justify-between",
                     // The trade book has no symbol token, so the symbol cannot link to QuoteDetail here.
-                    span { class: "font-semibold", "{short_symbol(&trade.trading_symbol)}" }
+                    span { class: "font-semibold", "{util::display_symbol(&trade.trading_symbol)}" }
                     span { class: "font-semibold tabular-nums", "{fill}" }
                 }
                 div { class: "flex flex-wrap items-center gap-2 text-xs",

@@ -31,6 +31,13 @@ tokio = { version = "1", features = ["time"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4"
 
+[dev-dependencies]
+# The SmartAPI stand-in in examples/mock_smartapi, and server_fn's argument
+# encoding for the wire tests. Versions match what dioxus already locks.
+axum = "0.7"
+serde_qs = "0.12"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "time"] }
+
 [features]
 default = ["mobile"]
 web = ["dioxus/web"]

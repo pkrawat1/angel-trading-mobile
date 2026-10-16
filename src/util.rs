@@ -91,6 +91,13 @@ pub fn compact(value: f64) -> String {
     format!("{scaled:.2}{suffix}")
 }
 
+/// Drops the `-EQ` series that most NSE equities carry. Other series stay,
+/// because SBIN-BE is a different instrument from SBIN-EQ, and a hyphen can be
+/// part of the name, as in BAJAJ-AUTO-EQ.
+pub fn display_symbol(trading_symbol: &str) -> &str {
+    trading_symbol.strip_suffix("-EQ").unwrap_or(trading_symbol)
+}
+
 /// DaisyUI text colour for a gain, a loss or a flat value.
 pub fn tone(value: f64) -> &'static str {
     if value > 0.0 {
@@ -137,4 +144,84 @@ pub async fn sleep_ms(ms: u64) {
         }
     });
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn indian_digit_grouping() {
+        assert_eq!(grouped(0.0, 2), "0.00");
+        assert_eq!(grouped(999.5, 2), "999.50");
+        assert_eq!(grouped(1234.5, 2), "1,234.50");
+        assert_eq!(grouped(123456.789, 2), "1,23,456.79");
+        assert_eq!(grouped(12345678.0, 0), "1,23,45,678");
+        assert_eq!(grouped(-98765.4, 1), "-98,765.4");
+        assert_eq!(grouped(-0.001, 2), "0.00", "no negative zero");
+    }
+
+    #[test]
+    fn rupee_amounts() {
+        assert_eq!(inr(1234.5), "₹1,234.50");
+        assert_eq!(inr(-56.7), "-₹56.70");
+        assert_eq!(inr(-0.001), "₹0.00");
+        assert_eq!(signed_inr(1234.0), "+₹1,234.00");
+        assert_eq!(signed_inr(-56.7), "-₹56.70");
+        assert_eq!(signed_inr(0.004), "₹0.00");
+        assert_eq!(price(3388.9), "3,388.90");
+    }
+
+    #[test]
+    fn percentages() {
+        assert_eq!(signed_pct(1.234), "+1.23%");
+        assert_eq!(signed_pct(-0.456), "-0.46%");
+        assert_eq!(signed_pct(-0.001), "0.00%");
+    }
+
+    #[test]
+    fn compact_quantities() {
+        assert_eq!(compact(950.0), "950");
+        assert_eq!(compact(12_300.0), "12.30K");
+        assert_eq!(compact(456_000.0), "4.56L");
+        assert_eq!(compact(78_900_000.0), "7.89Cr");
+        assert_eq!(compact(-1_500.0), "-1.50K");
+    }
+
+    #[test]
+    fn symbols_lose_only_the_eq_series() {
+        assert_eq!(display_symbol("SBIN-EQ"), "SBIN");
+        assert_eq!(display_symbol("SBIN-BE"), "SBIN-BE");
+        assert_eq!(display_symbol("BAJAJ-AUTO-EQ"), "BAJAJ-AUTO");
+        assert_eq!(display_symbol("NIFTY28OCT2625200CE"), "NIFTY28OCT2625200CE");
+        assert_eq!(display_symbol("Nifty 50"), "Nifty 50");
+    }
+
+    #[test]
+    fn tones() {
+        assert_eq!(tone(0.5), "text-success");
+        assert_eq!(tone(-0.5), "text-error");
+        assert_eq!(tone(0.0), "text-base-content/70");
+    }
+
+    #[test]
+    fn session_errors() {
+        let err = |message: &str| ServerFnError::ServerError(message.to_string());
+        assert!(is_session_error(&err("Invalid Token [AG8001]")));
+        assert!(is_session_error(&err("Invalid Token")));
+        assert!(is_session_error(&err("Token expired [AB8051]")));
+        assert!(!is_session_error(&err("Something Went Wrong [AB1004]")));
+        assert!(!is_session_error(&err("Invalid totp [AB1050]")));
+    }
+
+    #[test]
+    fn error_text_shows_the_broker_message() {
+        let broker = ServerFnError::ServerError("Invalid price [AB4008]".into());
+        assert_eq!(error_text(&broker), "Invalid price [AB4008]");
+        let offline = ServerFnError::Request("connection refused".into());
+        assert_eq!(
+            error_text(&offline),
+            "Can't reach the trading server. Check that it is running."
+        );
+    }
 }

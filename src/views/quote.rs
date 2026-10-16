@@ -90,7 +90,7 @@ pub fn QuoteDetail(exchange: String, symbol_token: String) -> Element {
             let (exchange, symbol_token) = (exchange.clone(), symbol_token.clone());
             let r = range();
             async move {
-                auth.guard(
+                let result = auth.guard(
                     api::get_candles(
                         auth.token(),
                         exchange,
@@ -99,17 +99,21 @@ pub fn QuoteDetail(exchange: String, symbol_token: String) -> Element {
                         r.days(),
                     )
                     .await,
-                )
+                );
+                // The previous result stays readable while a new range loads,
+                // so the chart must know which range it was fetched for.
+                (r, result)
             }
         })
     };
 
+    // Tokens are unique only within an exchange, so both must match.
     let mut starred = {
-        let token = symbol_token.clone();
+        let (exchange, token) = (exchange.clone(), symbol_token.clone());
         use_signal(move || {
             storage_list()
                 .iter()
-                .any(|i| i.symbol_token == token)
+                .any(|i| i.exchange == exchange && i.symbol_token == token)
         })
     };
 
@@ -117,8 +121,9 @@ pub fn QuoteDetail(exchange: String, symbol_token: String) -> Element {
         let (exchange, symbol_token) = (exchange.clone(), symbol_token.clone());
         move |_| {
             let mut list = storage_list();
-            if list.iter().any(|i| i.symbol_token == symbol_token) {
-                list.retain(|i| i.symbol_token != symbol_token);
+            let is_this = |i: &Instrument| i.exchange == exchange && i.symbol_token == symbol_token;
+            if list.iter().any(is_this) {
+                list.retain(|i| !is_this(i));
                 starred.set(false);
             } else {
                 let trading_symbol = last_quote
@@ -149,9 +154,9 @@ pub fn QuoteDetail(exchange: String, symbol_token: String) -> Element {
 
     let chart = match &*candles.read() {
         None => rsx! { Loader {} },
-        Some(Err(e)) => rsx! { ErrorCard { message: e.clone() } },
-        Some(Ok(all)) => {
-            let shown: Vec<Candle> = if range() == Range::Day {
+        Some((_, Err(e))) => rsx! { ErrorCard { message: e.clone() } },
+        Some((fetched, Ok(all))) => {
+            let shown: Vec<Candle> = if *fetched == Range::Day {
                 match all.last().map(|c| date_of(c).to_string()) {
                     Some(day) => all.iter().filter(|c| date_of(c) == day).cloned().collect(),
                     None => Vec::new(),
@@ -218,7 +223,7 @@ fn QuoteBody(quote: Quote) -> Element {
     let tone = util::tone(quote.net_change);
     let ltp = util::price(quote.ltp);
     let change = format!("{} ({})", util::signed_inr(quote.net_change), util::signed_pct(quote.percent_change));
-    let symbol = quote.trading_symbol.clone();
+    let symbol = util::display_symbol(&quote.trading_symbol).to_string();
     let exch = quote.exchange.clone();
     let volume = util::compact(quote.trade_volume as f64);
     let buy_qty = util::compact(quote.total_buy_qty as f64);

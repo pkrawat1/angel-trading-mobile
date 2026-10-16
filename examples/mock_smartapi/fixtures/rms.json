@@ -1,0 +1,16 @@
+{
+  "net": "125432.75",
+  "availablecash": "118056.00",
+  "availableintradaypayin": "0",
+  "availablelimitmargin": "0",
+  "collateral": "0",
+  "m2munrealized": "-33.00",
+  "m2mrealized": "142.50",
+  "utiliseddebits": "7376.75",
+  "utilisedspan": null,
+  "utilisedoptionpremium": null,
+  "utilisedholdingsales": "4051.00",
+  "utilisedexposure": null,
+  "utilisedturnover": null,
+  "utilisedpayout": "-0.00"
+}

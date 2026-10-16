@@ -161,6 +161,9 @@ pub async fn place_order(token: String, order: OrderRequest) -> Result<OrderAck,
 /// `order.order_id` must name the order being modified.
 #[server]
 pub async fn modify_order(token: String, order: OrderRequest) -> Result<OrderAck, ServerFnError> {
+    if order.order_id.as_deref().unwrap_or_default().is_empty() {
+        return Err(ServerFnError::ServerError("Missing the order id to modify".into()));
+    }
     smartapi::post_once(
         "rest/secure/angelbroking/order/v1/modifyOrder",
         &token,
@@ -199,3 +202,6 @@ pub async fn estimate_charges(token: String, order: OrderRequest) -> Result<Char
     .await?;
     Ok(Charges::from_summary(&data["summary"]))
 }
+
+#[cfg(all(test, feature = "server"))]
+mod tests;

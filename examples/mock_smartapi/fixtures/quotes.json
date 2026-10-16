@@ -1,0 +1,66 @@
+[
+  {
+    "exchange": "NSE",
+    "tradingSymbol": "SBIN-EQ",
+    "symbolToken": "3045",
+    "ltp": 812.6,
+    "open": 806.0,
+    "high": 815.4,
+    "low": 803.25,
+    "close": 805.1,
+    "lastTradeQty": 25,
+    "exchFeedTime": "16-Oct-2026 15:29:59",
+    "exchTradeTime": "16-Oct-2026 15:29:58",
+    "netChange": 7.5,
+    "percentChange": 0.93,
+    "avgPrice": 810.22,
+    "tradeVolume": 11234567,
+    "opnInterest": 0,
+    "lowerCircuit": 724.6,
+    "upperCircuit": 885.6,
+    "totBuyQuan": 512340,
+    "totSellQuan": 689021,
+    "52WeekLow": 680.0,
+    "52WeekHigh": 912.1,
+    "depth": {
+      "buy": [
+        { "price": 812.55, "quantity": 145, "orders": 3 },
+        { "price": 812.5, "quantity": 902, "orders": 11 },
+        { "price": 812.45, "quantity": 230, "orders": 4 },
+        { "price": 812.4, "quantity": 1501, "orders": 18 },
+        { "price": 812.35, "quantity": 640, "orders": 7 }
+      ],
+      "sell": [
+        { "price": 812.6, "quantity": 88, "orders": 2 },
+        { "price": 812.65, "quantity": 410, "orders": 6 },
+        { "price": 812.7, "quantity": 1203, "orders": 14 },
+        { "price": 812.75, "quantity": 356, "orders": 5 },
+        { "price": 812.8, "quantity": 2010, "orders": 21 }
+      ]
+    }
+  },
+  {
+    "exchange": "NSE",
+    "tradingSymbol": "Nifty 50",
+    "symbolToken": "99926000",
+    "ltp": 25146.35,
+    "open": 25090.1,
+    "high": 25210.75,
+    "low": 25034.6,
+    "close": 25064.2,
+    "lastTradeQty": 0,
+    "exchFeedTime": "16-Oct-2026 15:30:00",
+    "exchTradeTime": "16-Oct-2026 15:30:00",
+    "netChange": 82.15,
+    "percentChange": 0.33,
+    "avgPrice": 0,
+    "tradeVolume": 0,
+    "opnInterest": 0,
+    "lowerCircuit": 0,
+    "upperCircuit": 0,
+    "totBuyQuan": 0,
+    "totSellQuan": 0,
+    "52WeekLow": 21743.65,
+    "52WeekHigh": 26277.35
+  }
+]

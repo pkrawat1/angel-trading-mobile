@@ -10,8 +10,35 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value;
 
-const BASE_URL: &str = "https://apiconnect.angelbroking.com/";
+const ANGEL_ONE_URL: &str = "https://apiconnect.angelbroking.com/";
 const MAX_ATTEMPTS: u64 = 3;
+
+/// Tests set this before the first request, so they never depend on the
+/// process environment.
+#[cfg(test)]
+pub static TEST_BASE_URL: OnceLock<String> = OnceLock::new();
+
+/// Where SmartAPI calls go. SMARTAPI_BASE_URL points them at a stand-in such
+/// as `cargo run --example mock_smartapi`, so the app can be exercised end to
+/// end without a live account.
+fn base_url() -> &'static str {
+    static URL: OnceLock<String> = OnceLock::new();
+    URL.get_or_init(|| {
+        #[cfg(test)]
+        if let Some(url) = TEST_BASE_URL.get() {
+            return url.clone();
+        }
+        let mut url = env("SMARTAPI_BASE_URL").unwrap_or_else(|| ANGEL_ONE_URL.into());
+        if !url.ends_with('/') {
+            url.push('/');
+        }
+        url
+    })
+}
+
+fn is_live() -> bool {
+    base_url() == ANGEL_ONE_URL
+}
 
 // Session errors (expired or invalid JWT) come from Angel's gateway, which spells
 // these fields `success` and `errorCode` instead of `status` and `errorcode`.
@@ -28,7 +55,7 @@ struct Envelope {
 }
 
 pub async fn get<T: DeserializeOwned>(path: &str, token: &str) -> Result<T, ServerFnError> {
-    let url = format!("{BASE_URL}{path}");
+    let url = format!("{}{path}", base_url());
     decode(send(|| http().get(&url).headers(headers(Some(token))), true).await?)
 }
 
@@ -37,7 +64,7 @@ pub async fn post<T: DeserializeOwned>(
     token: Option<&str>,
     body: &Value,
 ) -> Result<T, ServerFnError> {
-    let url = format!("{BASE_URL}{path}");
+    let url = format!("{}{path}", base_url());
     decode(send(|| http().post(&url).headers(headers(token)).json(body), true).await?)
 }
 
@@ -48,7 +75,7 @@ pub async fn post_once<T: DeserializeOwned>(
     token: &str,
     body: &Value,
 ) -> Result<T, ServerFnError> {
-    let url = format!("{BASE_URL}{path}");
+    let url = format!("{}{path}", base_url());
     decode(send(|| http().post(&url).headers(headers(Some(token))).json(body), false).await?)
 }
 
@@ -82,6 +109,11 @@ fn http() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(20));
+        if !is_live() {
+            // A stand-in runs locally; routing it through a proxy would only
+            // send test traffic off the machine.
+            return builder.no_proxy().build().unwrap_or_default();
+        }
         // SEBI requires API orders to come from the client's registered static
         // IP. PROXY_URL is that egress, as in the web app's client config.
         if let Some(url) = env("PROXY_URL") {
@@ -165,9 +197,14 @@ async fn send(
         .await
         .map_err(|e| fail(format!("Could not read Angel One's response: {e}")))?;
     let envelope: Envelope = serde_json::from_str(&text).map_err(|_| {
-        fail(format!(
-            "Angel One returned an unexpected response (HTTP {status})"
-        ))
+        // A rate-limit refusal is a line of plain text, which says more than
+        // the status alone. HTML error pages are not worth showing.
+        let text = text.trim();
+        if !text.is_empty() && text.len() <= 200 && !text.starts_with('<') {
+            fail(format!("{text} (HTTP {status})"))
+        } else {
+            fail(format!("Angel One returned an unexpected response (HTTP {status})"))
+        }
     })?;
 
     if envelope.status {
