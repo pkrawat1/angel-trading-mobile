@@ -52,12 +52,14 @@ name = "angel_trading"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "daisy_rsx",
  "dioxus",
  "dioxus-logger",
  "js-sys",
  "lru 0.16.0",
  "reqwest",
+ "ring",
  "serde",
  "serde_json",
  "serde_qs",

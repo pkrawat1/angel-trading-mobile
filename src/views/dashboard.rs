@@ -9,9 +9,9 @@ use crate::Route;
 pub fn Dashboard() -> Element {
     let auth = crate::auth::use_auth();
 
-    let mut profile = use_resource(move || async move { auth.guard(api::get_profile(auth.token()).await) });
-    let mut funds = use_resource(move || async move { auth.guard(api::get_funds(auth.token()).await) });
-    let mut holdings = use_resource(move || async move { auth.guard(api::get_holdings(auth.token()).await) });
+    let mut profile = use_resource(move || async move { auth.guard(api::get_profile(auth.session()).await) });
+    let mut funds = use_resource(move || async move { auth.guard(api::get_funds(auth.session()).await) });
+    let mut holdings = use_resource(move || async move { auth.guard(api::get_holdings(auth.session()).await) });
 
     // Keeps the last good holdings on screen while a poll is in flight.
     let mut last_holdings = use_signal(|| None::<Vec<Holding>>);

@@ -128,7 +128,7 @@ pub fn OrderNew(exchange: String, symbol_token: String, transaction_type: String
             symbol_token: symbol_token.clone(),
         };
         async move {
-            let quotes = auth.guard(api::get_quotes(auth.token(), vec![instrument]).await)?;
+            let quotes = auth.guard(api::get_quotes(auth.session(), vec![instrument]).await)?;
             quotes.into_iter().next().ok_or_else(|| "No quote available for this instrument.".to_string())
         }
     });
@@ -162,7 +162,7 @@ pub fn OrderEdit(order_id: String) -> Element {
     let loaded = use_resource(move || {
         let order_id = order_id.clone();
         async move {
-            let book = auth.guard(api::get_order_book(auth.token()).await)?;
+            let book = auth.guard(api::get_order_book(auth.session()).await)?;
             let order = book
                 .into_iter()
                 .find(|o| o.order_id == order_id)
@@ -173,7 +173,7 @@ pub fn OrderEdit(order_id: String) -> Element {
                 symbol_token: order.symbol_token.clone(),
             };
             // The price hint is optional here, so a failed quote falls back to the order's own price.
-            let ltp = match api::get_quotes(auth.token(), vec![instrument.clone()]).await {
+            let ltp = match api::get_quotes(auth.session(), vec![instrument.clone()]).await {
                 Ok(quotes) => quotes.first().map(|q| q.ltp).unwrap_or(order.price),
                 Err(_) => order.price,
             };
@@ -278,7 +278,7 @@ fn OrderForm(init: Init) -> Element {
         }
         charges_busy.set(true);
         spawn(async move {
-            let result = auth.guard(api::estimate_charges(auth.token(), req).await);
+            let result = auth.guard(api::estimate_charges(auth.session(), req).await);
             charges.set(Some(result));
             charges_busy.set(false);
         });
@@ -300,11 +300,11 @@ fn OrderForm(init: Init) -> Element {
         let Some(req) = confirm() else { return };
         busy.set(true);
         spawn(async move {
-            let token = auth.token();
+            let session = auth.session();
             let result = if req.order_id.is_some() {
-                api::modify_order(token, req).await
+                api::modify_order(session, req).await
             } else {
-                api::place_order(token, req).await
+                api::place_order(session, req).await
             };
             match auth.guard(result) {
                 Ok(ack) => outcome.set(Some(ack)),

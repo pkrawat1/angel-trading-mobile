@@ -16,6 +16,11 @@
 //! first call to each endpoint. Any other token gets the fixtures. A login
 //! returns `<client code>-session`, so signing in as EXPIRED, BROKER-DOWN and
 //! so on selects a scenario from the app.
+//!
+//! It also stands in for the web app's Firebase store at
+//! `/clients/<client code>.json`. Its records were encrypted by the web app's
+//! own plug_crypto under ENCRYPTION_KEY, and it refuses requests that lack
+//! FIREBASE_TOKEN, as Firebase does.
 
 // The example binary and the unit tests each use a different part of this file.
 #![allow(dead_code)]
@@ -40,6 +45,10 @@ pub const TRADE_BOOK: &str = include_str!("fixtures/trade_book.json");
 pub const POSITIONS: &str = include_str!("fixtures/positions.json");
 pub const QUOTES: &str = include_str!("fixtures/quotes.json");
 pub const INSTRUMENTS: &str = include_str!("fixtures/instruments.json");
+pub const FIREBASE_CLIENTS: &str = include_str!("fixtures/firebase_clients.json");
+/// A throwaway key for the fixture records, not the web app's.
+pub const ENCRYPTION_KEY: &str = "mobile-app-test-encryption-key";
+pub const FIREBASE_TOKEN: &str = "mock-firebase-token";
 
 const MAX_QUOTE_TOKENS: usize = 50;
 
@@ -51,6 +60,7 @@ pub fn fixture(raw: &str) -> Value {
 pub struct Recorded {
     pub method: Method,
     pub path: String,
+    pub query: Option<String>,
     pub headers: HeaderMap,
     pub body: Value,
 }
@@ -129,10 +139,19 @@ async fn handle(
     let recorded = Recorded {
         method: method.clone(),
         path: uri.path().to_string(),
+        query: uri.query().map(str::to_owned),
         headers,
         body: serde_json::from_slice(&body).unwrap_or(Value::Null),
     };
     mock.requests.lock().unwrap().push(recorded.clone());
+
+    if let Some(client_code) = uri
+        .path()
+        .strip_prefix("/clients/")
+        .and_then(|rest| rest.strip_suffix(".json"))
+    {
+        return firebase_client(uri.query(), client_code);
+    }
 
     // Angel One documents some paths with a trailing slash and accepts both.
     let path = uri.path().trim_end_matches('/');
@@ -217,6 +236,16 @@ fn scenario(mock: &Mock, token: &str, endpoint: &str) -> Option<Response> {
     } else {
         return None;
     })
+}
+
+/// Firebase answers an unknown key with `null`, not an error.
+fn firebase_client(query: Option<&str>, client_code: &str) -> Response {
+    if query != Some(format!("auth={FIREBASE_TOKEN}").as_str()) {
+        let body = Json(json!({ "error": "Permission denied" }));
+        return (StatusCode::UNAUTHORIZED, body).into_response();
+    }
+    let record = fixture(FIREBASE_CLIENTS).get(client_code).cloned();
+    Json(record.unwrap_or(Value::Null)).into_response()
 }
 
 fn ok(data: Value) -> Response {

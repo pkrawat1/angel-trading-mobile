@@ -49,7 +49,7 @@ pub fn Orders() -> Element {
     let mut book_error = use_signal(|| None::<String>);
 
     let mut fetch = use_resource(move || async move {
-        match auth.guard(api::get_order_book(auth.token()).await) {
+        match auth.guard(api::get_order_book(auth.session()).await) {
             Ok(items) => {
                 book.set(Some(items));
                 book_error.set(None);
@@ -197,7 +197,7 @@ fn OpenOrderCard(order: Order, on_result: EventHandler<(bool, String)>) -> Eleme
                                 busy.set(true);
                                 spawn(async move {
                                     let result = auth
-                                        .guard(api::cancel_order(auth.token(), variety, order_id).await);
+                                        .guard(api::cancel_order(auth.session(), variety, order_id).await);
                                     busy.set(false);
                                     confirming.set(false);
                                     match result {
@@ -296,7 +296,7 @@ fn ExecutedCard(order: Order) -> Element {
 fn PositionsTab() -> Element {
     let auth = crate::auth::use_auth();
     let data = use_resource(move || async move {
-        let positions = auth.guard(api::get_positions(auth.token()).await)?;
+        let positions = auth.guard(api::get_positions(auth.session()).await)?;
         let missing: Vec<Instrument> = positions
             .iter()
             .filter(|p| p.ltp == 0.0)
@@ -309,7 +309,7 @@ fn PositionsTab() -> Element {
         let mut prices = HashMap::<String, f64>::new();
         if !missing.is_empty() {
             // A failed quote call leaves LTP at zero rather than hiding the positions.
-            if let Ok(quotes) = auth.guard(api::get_quotes(auth.token(), missing).await) {
+            if let Ok(quotes) = auth.guard(api::get_quotes(auth.session(), missing).await) {
                 for q in quotes {
                     prices.insert(q.symbol_token, q.ltp);
                 }
@@ -395,7 +395,7 @@ fn PositionCard(position: Position, ltp: f64) -> Element {
 #[component]
 fn TradesTab() -> Element {
     let auth = crate::auth::use_auth();
-    let data = use_resource(move || async move { auth.guard(api::get_trade_book(auth.token()).await) });
+    let data = use_resource(move || async move { auth.guard(api::get_trade_book(auth.session()).await) });
 
     let state = data.read().clone();
     match state {

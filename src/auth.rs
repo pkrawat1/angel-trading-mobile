@@ -53,9 +53,12 @@ impl AuthContext {
         }
     }
 
-    /// The session JWT, or an empty string when signed out.
-    pub fn token(&self) -> String {
-        self.get_tokens().map(|t| t.jwt_token).unwrap_or_default()
+    /// What broker calls send: the JWT and the client code it belongs to.
+    /// Both are empty when signed out.
+    pub fn session(&self) -> crate::api::Session {
+        self.get_tokens()
+            .map(|t| crate::api::Session { client_code: t.user_id, jwt: t.jwt_token })
+            .unwrap_or_default()
     }
 
     /// Turns a server-function error into display text. When the broker has

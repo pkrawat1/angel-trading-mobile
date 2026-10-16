@@ -58,7 +58,7 @@ fn schedule_search(
             return;
         }
         state.set(SearchState::Searching);
-        let found = auth.guard(api::search_scrip(auth.token(), exchange, query).await);
+        let found = auth.guard(api::search_scrip(auth.session(), exchange, query).await);
         if *generation.peek() != ticket {
             return;
         }
@@ -96,7 +96,7 @@ pub fn Watchlist() -> Element {
         if items.is_empty() {
             return;
         }
-        match auth.guard(api::get_quotes(auth.token(), items).await) {
+        match auth.guard(api::get_quotes(auth.session(), items).await) {
             Ok(fetched) => {
                 quotes.set(fetched);
                 quote_error.set(None);

@@ -37,7 +37,7 @@ impl SortBy {
 #[component]
 pub fn Portfolio() -> Element {
     let auth = crate::auth::use_auth();
-    let mut data = use_resource(move || async move { auth.guard(api::get_holdings(auth.token()).await) });
+    let mut data = use_resource(move || async move { auth.guard(api::get_holdings(auth.session()).await) });
     let mut holdings = use_signal(|| None::<Vec<Holding>>);
     let mut error = use_signal(|| None::<String>);
     let mut sort = use_signal(|| SortBy::Symbol);

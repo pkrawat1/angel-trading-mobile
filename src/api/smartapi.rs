@@ -1,14 +1,18 @@
-//! Server-side HTTP client for SmartAPI. Headers, retries and the static-IP
-//! proxy follow trade_galleon's AngelOne broker, so both apps look the same to
-//! Angel One.
+//! Server-side HTTP client for SmartAPI. Headers, retries and the per-client
+//! static-IP proxy follow trade_galleon's AngelOne broker, so both apps look
+//! the same to Angel One.
 
-use std::sync::OnceLock;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use dioxus::prelude::ServerFnError;
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value;
+
+use super::clients::{self, ClientConfig};
+use super::Session;
 
 const ANGEL_ONE_URL: &str = "https://apiconnect.angelbroking.com/";
 const MAX_ATTEMPTS: u64 = 3;
@@ -36,7 +40,7 @@ fn base_url() -> &'static str {
     })
 }
 
-fn is_live() -> bool {
+pub(super) fn is_live() -> bool {
     base_url() == ANGEL_ONE_URL
 }
 
@@ -54,29 +58,53 @@ struct Envelope {
     data: Value,
 }
 
-pub async fn get<T: DeserializeOwned>(path: &str, token: &str) -> Result<T, ServerFnError> {
-    let url = format!("{}{path}", base_url());
-    decode(send(|| http().get(&url).headers(headers(Some(token))), true).await?)
+pub async fn get<T: DeserializeOwned>(path: &str, session: &Session) -> Result<T, ServerFnError> {
+    call(path, &session.client_code, Some(&session.jwt), None, true).await
 }
 
 pub async fn post<T: DeserializeOwned>(
     path: &str,
-    token: Option<&str>,
+    session: &Session,
     body: &Value,
 ) -> Result<T, ServerFnError> {
-    let url = format!("{}{path}", base_url());
-    decode(send(|| http().post(&url).headers(headers(token)).json(body), true).await?)
+    call(path, &session.client_code, Some(&session.jwt), Some(body), true).await
 }
 
 /// For order calls, which must not be retried: a request that timed out may
 /// still have reached the exchange, and a retry would place it twice.
 pub async fn post_once<T: DeserializeOwned>(
     path: &str,
-    token: &str,
+    session: &Session,
     body: &Value,
 ) -> Result<T, ServerFnError> {
+    call(path, &session.client_code, Some(&session.jwt), Some(body), false).await
+}
+
+/// Signs in, before there is a JWT to send.
+pub async fn login<T: DeserializeOwned>(client_code: &str, body: &Value) -> Result<T, ServerFnError> {
+    let path = "rest/auth/angelbroking/user/v1/loginByPassword";
+    call(path, client_code, None, Some(body), true).await
+}
+
+async fn call<T: DeserializeOwned>(
+    path: &str,
+    client_code: &str,
+    jwt: Option<&str>,
+    body: Option<&Value>,
+    retry: bool,
+) -> Result<T, ServerFnError> {
+    let client = clients::config(client_code).await?;
+    let http = http(client.proxy_url.as_deref())?;
+    let headers = headers(&client, jwt);
     let url = format!("{}{path}", base_url());
-    decode(send(|| http().post(&url).headers(headers(Some(token))).json(body), false).await?)
+    let request = || {
+        let builder = match body {
+            Some(body) => http.post(&url).json(body),
+            None => http.get(&url),
+        };
+        builder.headers(headers.clone())
+    };
+    decode(send(request, retry).await?)
 }
 
 /// SmartAPI's candle range format: `YYYY-MM-DD HH:MM` in IST.
@@ -101,61 +129,73 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
     (yoe + era * 400 + i64::from(m <= 2), m, d)
 }
 
-fn env(key: &str) -> Option<String> {
+pub(super) fn env(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())
 }
 
-fn http() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(20));
-        if !is_live() {
-            // A stand-in runs locally; routing it through a proxy would only
-            // send test traffic off the machine.
-            return builder.no_proxy().build().unwrap_or_default();
-        }
-        // SEBI requires API orders to come from the client's registered static
-        // IP. PROXY_URL is that egress, as in the web app's client config.
-        if let Some(url) = env("PROXY_URL") {
-            match reqwest::Proxy::all(&url) {
-                Ok(proxy) => {
-                    let proxy = match (env("PROXY_USERNAME"), env("PROXY_PASSWORD")) {
-                        (Some(user), Some(pass)) => proxy.basic_auth(&user, &pass),
-                        _ => proxy,
-                    };
-                    builder = builder.proxy(proxy);
-                }
-                Err(e) => tracing::error!("Ignoring invalid PROXY_URL: {e}"),
-            }
-        }
-        builder.build().unwrap_or_default()
-    })
+/// One HTTP client per proxy, so each SmartAPI client's calls leave from its
+/// own static IP and still reuse connections.
+fn http(proxy: Option<&str>) -> Result<reqwest::Client, ServerFnError> {
+    static CLIENTS: OnceLock<Mutex<HashMap<Option<String>, reqwest::Client>>> = OnceLock::new();
+    let key = proxy.map(str::to_owned);
+    let mut clients = CLIENTS.get_or_init(Default::default).lock().unwrap();
+    if let Some(client) = clients.get(&key) {
+        return Ok(client.clone());
+    }
+    let client = build_http(proxy, env("PROXY_USERNAME"), env("PROXY_PASSWORD"))?;
+    clients.insert(key, client.clone());
+    Ok(client)
 }
 
-fn headers(token: Option<&str>) -> HeaderMap {
-    // Angel One matches X-ClientPublicIP against the request's source IP, which
-    // is the proxy's when one is configured.
-    let proxy_host = env("PROXY_URL").and_then(|url| {
-        reqwest::Url::parse(&url)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_owned))
-    });
-    let public_ip = proxy_host
+/// The proxy credentials belong to the Webshare account, so every client's
+/// proxy takes the same ones; only the host and port differ.
+pub(super) fn build_http(
+    proxy: Option<&str>,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<reqwest::Client, ServerFnError> {
+    let builder = reqwest::Client::builder().timeout(Duration::from_secs(20));
+    let builder = match proxy {
+        // The client's record decides; a system proxy would change the IP
+        // Angel One sees.
+        None => builder.no_proxy(),
+        Some(url) => {
+            let proxy = reqwest::Proxy::all(url)
+                .map_err(|_| fail("The proxy saved for this client is not a valid URL".into()))?;
+            builder.proxy(match (username, password) {
+                (Some(user), Some(pass)) => proxy.basic_auth(&user, &pass),
+                _ => proxy,
+            })
+        }
+    };
+    builder
+        .build()
+        .map_err(|e| fail(format!("Could not set up the connection to Angel One: {e}")))
+}
+
+pub(super) fn headers(client: &ClientConfig, jwt: Option<&str>) -> HeaderMap {
+    // Angel One matches X-ClientPublicIP against the request's source IP,
+    // which is the proxy's when the client has one.
+    let public_ip = client
+        .proxy_url
+        .as_deref()
+        .and_then(proxy_host)
         .or_else(|| env("PUBLIC_IP"))
         .unwrap_or_else(|| "0.0.0.0".into());
 
+    // The local IP and MAC defaults are the web app's.
     let mut pairs = vec![
         ("Content-Type", "application/json".to_string()),
         ("Accept", "application/json".to_string()),
         ("X-UserType", "USER".to_string()),
         ("X-SourceID", "WEB".to_string()),
-        ("X-ClientLocalIP", env("LOCAL_IP").unwrap_or_default()),
+        ("X-ClientLocalIP", env("LOCAL_IP").unwrap_or_else(|| "192.168.168.168".into())),
         ("X-ClientPublicIP", public_ip),
-        ("X-MACAddress", env("MAC_ADDRESS").unwrap_or_default()),
-        ("X-PrivateKey", env("API_KEY").unwrap_or_default()),
+        ("X-MACAddress", env("MAC_ADDRESS").unwrap_or_else(|| "fe80::216e:6507:4b90:3719".into())),
+        ("X-PrivateKey", client.api_key.clone()),
     ];
-    if let Some(token) = token {
-        pairs.push(("Authorization", format!("Bearer {token}")));
+    if let Some(jwt) = jwt {
+        pairs.push(("Authorization", format!("Bearer {jwt}")));
     }
 
     let mut map = HeaderMap::new();
@@ -167,7 +207,13 @@ fn headers(token: Option<&str>) -> HeaderMap {
     map
 }
 
-fn fail(message: String) -> ServerFnError {
+/// Proxies are saved as URLs, with or without the scheme.
+fn proxy_host(url: &str) -> Option<String> {
+    let url = if url.contains("://") { url.to_owned() } else { format!("http://{url}") };
+    reqwest::Url::parse(&url).ok()?.host_str().map(str::to_owned)
+}
+
+pub(super) fn fail(message: String) -> ServerFnError {
     ServerFnError::ServerError(message)
 }
 

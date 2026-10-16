@@ -15,8 +15,17 @@ use axum::http::Method;
 use dioxus::prelude::ServerFnError;
 use serde_json::json;
 
+use super::clients::{self, ClientConfig};
 use super::*;
 use mock::{Mock, Recorded};
+
+/// The mock picks a scenario from the JWT alone, so a test names its session
+/// by the token.
+impl From<&str> for Session {
+    fn from(jwt: &str) -> Self {
+        Session { client_code: "MOCK".into(), jwt: jwt.into() }
+    }
+}
 
 fn rt() -> &'static tokio::runtime::Runtime {
     static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
@@ -133,7 +142,7 @@ fn login_reports_a_rejected_totp() {
 #[test]
 fn logout_posts_the_client_code() {
     let mock = mock();
-    run(logout_session("logout".into(), "MOCK123".into())).unwrap();
+    run(logout_session(Session { client_code: "MOCK123".into(), jwt: "logout".into() })).unwrap();
     let request = only(mock.requests_for("logout"));
     assert_eq!(request.method, Method::POST);
     assert_eq!(request.path, "/rest/secure/angelbroking/user/v1/logout");
@@ -161,7 +170,7 @@ fn secure_calls_send_the_session_and_app_headers() {
 #[test]
 fn reads_use_get_on_their_documented_paths() {
     let mock = mock();
-    let token = || "paths".to_string();
+    let token = || Session::from("paths");
     run(get_profile(token())).unwrap();
     run(get_funds(token())).unwrap();
     run(get_holdings(token())).unwrap();
@@ -402,7 +411,7 @@ fn candle_ranges_are_clamped_to_the_interval_limit() {
     ];
     for (interval, max_days) in limits {
         let token = format!("clamp-{interval}");
-        let call = get_candles(token.clone(), "NSE".into(), "3045".into(), interval.into(), 10_000);
+        let call = get_candles(token.as_str().into(), "NSE".into(), "3045".into(), interval.into(), 10_000);
         let candles = run(call).unwrap_or_else(|e| panic!("{interval}: {e}"));
         assert!(!candles.is_empty(), "{interval}");
         let request = only(mock.requests_for(&token));
@@ -680,7 +689,7 @@ fn order_calls_are_never_retried() {
 
 #[test]
 fn null_data_reads_as_empty() {
-    let token = || "empty-everything".to_string();
+    let token = || Session::from("empty-everything");
     assert_eq!(run(get_profile(token())).unwrap(), Profile::default());
     assert_eq!(run(get_funds(token())).unwrap(), Funds::default());
     assert!(run(get_holdings(token())).unwrap().is_empty());
@@ -714,10 +723,11 @@ fn order_arguments_survive_the_wire() {
         trigger_price: 0.1 + 0.2,
         ..limit_buy()
     };
+    let session = Session { client_code: "P123456".into(), jwt: "a+b/c=".into() };
     for order in [limit_buy(), modify] {
-        let args = PlaceOrder { token: "a+b/c=".into(), order: order.clone() };
+        let args = PlaceOrder { session: session.clone(), order: order.clone() };
         let decoded = over_the_wire(&args).unwrap();
-        assert_eq!((decoded.token.as_str(), decoded.order), ("a+b/c=", order));
+        assert_eq!((&decoded.session, decoded.order), (&session, order));
     }
 }
 
@@ -727,11 +737,119 @@ fn quote_arguments_survive_the_wire_unless_empty() {
         instrument("NSE", "M&M-EQ", "2031"),
         instrument("NSE", "Nifty 50", "99926000"),
     ];
-    let args = GetQuotes { token: "t".into(), instruments: instruments.clone() };
+    let args = GetQuotes { session: "t".into(), instruments: instruments.clone() };
     assert_eq!(over_the_wire(&args).unwrap().instruments, instruments);
 
     // An empty list encodes to nothing at all, so the server cannot rebuild
     // the arguments; get_quotes documents that callers must not send one.
-    let empty = GetQuotes { token: "t".into(), instruments: Vec::new() };
+    let empty = GetQuotes { session: "t".into(), instruments: Vec::new() };
     assert!(over_the_wire(&empty).is_err());
+}
+
+fn mock_url() -> &'static str {
+    mock();
+    smartapi::TEST_BASE_URL.get().expect("set by mock()")
+}
+
+fn client_settings(client_code: &str) -> Result<ClientConfig, ServerFnError> {
+    run(clients::fetch(mock_url(), mock::FIREBASE_TOKEN, mock::ENCRYPTION_KEY, client_code))
+}
+
+#[test]
+fn client_settings_come_from_the_web_apps_store() {
+    assert_eq!(
+        client_settings("P123456").unwrap(),
+        ClientConfig {
+            api_key: "proxied-api-key".into(),
+            proxy_url: Some("http://203.0.113.7:6001/".into()),
+        }
+    );
+    assert_eq!(
+        client_settings("D654321").unwrap(),
+        ClientConfig { api_key: "direct-api-key".into(), proxy_url: None }
+    );
+    // Written by plug_crypto 1.x, before the web app's upgrade.
+    assert_eq!(
+        client_settings("L111111").unwrap(),
+        ClientConfig {
+            api_key: "legacy-api-key".into(),
+            proxy_url: Some("http://198.51.100.20:7002".into()),
+        }
+    );
+    let lookup = mock()
+        .requests()
+        .into_iter()
+        .find(|r| r.path == "/clients/P123456.json")
+        .unwrap();
+    assert_eq!(lookup.method, Method::GET);
+    assert_eq!(lookup.query.as_deref(), Some("auth=mock-firebase-token"));
+}
+
+#[test]
+fn client_settings_explain_what_is_wrong() {
+    assert_eq!(
+        message(client_settings("NOBODY")),
+        "Client NOBODY is not set up. Add it in the web app first, with its API key and proxy."
+    );
+    let wrong_key = run(clients::fetch(mock_url(), mock::FIREBASE_TOKEN, "another-key", "P123456"));
+    assert_eq!(
+        message(wrong_key),
+        "Could not decrypt the settings for P123456. ENCRYPTION_KEY must match the web app's."
+    );
+    let wrong_token = run(clients::fetch(mock_url(), "stale", mock::ENCRYPTION_KEY, "P123456"));
+    assert_eq!(
+        message(wrong_token),
+        "Could not load the settings for P123456 (Firebase answered HTTP 401 Unauthorized)"
+    );
+    // The Firebase secret must not leak into what the app shows.
+    let unreachable = run(clients::fetch("http://127.0.0.1:9/", "secret-token", "k", "P123456"));
+    let text = message(unreachable);
+    assert!(text.starts_with("Could not load the settings for P123456: "), "{text}");
+    assert!(!text.contains("secret-token"), "{text}");
+}
+
+#[test]
+fn calls_leave_through_the_clients_proxy() {
+    use base64::Engine;
+
+    // The mock doubles as the proxy. The target is plain HTTP, so the proxy
+    // receives the request itself instead of a CONNECT tunnel.
+    let proxy = mock_url();
+    let http = smartapi::build_http(Some(proxy), Some("webshare-user".into()), Some("webshare-pass".into()))
+        .unwrap();
+    let client = ClientConfig { api_key: "proxied-api-key".into(), proxy_url: Some(proxy.into()) };
+    let request = http
+        .get("http://angel.invalid/rest/secure/angelbroking/user/v1/getProfile")
+        .headers(smartapi::headers(&client, Some("via-proxy")));
+    // send() starts the timeout timer, so it has to run on the runtime.
+    let response = run(async { request.send().await }).unwrap();
+    assert!(response.status().is_success());
+
+    let request = only(mock().requests_for("via-proxy"));
+    assert_eq!(request.path, "/rest/secure/angelbroking/user/v1/getProfile");
+    assert_eq!(request.header("host"), Some("angel.invalid"));
+    let credentials = base64::engine::general_purpose::STANDARD.encode("webshare-user:webshare-pass");
+    assert_eq!(request.header("proxy-authorization"), Some(format!("Basic {credentials}").as_str()));
+    assert_eq!(request.header("x-privatekey"), Some("proxied-api-key"));
+    assert_eq!(request.header("x-clientpublicip"), Some("127.0.0.1"));
+}
+
+#[test]
+fn the_public_ip_header_names_the_proxy_host() {
+    for (proxy, ip) in [
+        ("http://203.0.113.7:6001/", "203.0.113.7"),
+        ("203.0.113.7:6001", "203.0.113.7"),
+        ("http://user:pass@198.51.100.20:7002", "198.51.100.20"),
+    ] {
+        let client = ClientConfig { api_key: "k".into(), proxy_url: Some(proxy.into()) };
+        let headers = smartapi::headers(&client, None);
+        assert_eq!(headers["x-clientpublicip"], ip, "{proxy}");
+        assert!(!headers.contains_key("authorization"), "no JWT before sign-in");
+    }
+}
+
+#[test]
+fn a_proxy_that_is_not_a_url_is_refused() {
+    let result = smartapi::build_http(Some("http://exa mple:80"), None, None);
+    assert_eq!(message(result), "The proxy saved for this client is not a valid URL");
 }

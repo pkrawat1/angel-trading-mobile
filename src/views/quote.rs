@@ -65,7 +65,7 @@ pub fn QuoteDetail(exchange: String, symbol_token: String) -> Element {
             let (exchange, symbol_token) = (exchange.clone(), symbol_token.clone());
             async move {
                 let instrument = Instrument { exchange, symbol_token, trading_symbol: String::new() };
-                let result = auth.guard(api::get_quotes(auth.token(), vec![instrument]).await);
+                let result = auth.guard(api::get_quotes(auth.session(), vec![instrument]).await);
                 if let Ok(quotes) = &result {
                     if let Some(q) = quotes.first() {
                         last_quote.set(Some(q.clone()));
@@ -92,7 +92,7 @@ pub fn QuoteDetail(exchange: String, symbol_token: String) -> Element {
             async move {
                 let result = auth.guard(
                     api::get_candles(
-                        auth.token(),
+                        auth.session(),
                         exchange,
                         symbol_token,
                         r.interval().to_string(),

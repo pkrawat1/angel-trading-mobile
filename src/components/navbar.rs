@@ -12,8 +12,8 @@ pub fn Navbar() -> Element {
         spawn(async move {
             // Ending the broker session is best-effort; the local session is
             // cleared either way.
-            if let Some(tokens) = auth.get_tokens() {
-                let _ = api::logout_session(tokens.jwt_token, tokens.user_id).await;
+            if auth.is_authenticated() {
+                let _ = api::logout_session(auth.session()).await;
             }
             if let Err(e) = auth.logout().await {
                 tracing::error!("Logout failed: {e}");
