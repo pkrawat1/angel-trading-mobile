@@ -1,5 +1,5 @@
 @import "tailwindcss";
 @plugin "daisyui";
 html {
-    @apply bg-white dark:bg-gray-950 antialiased;
+    @apply bg-base-200 antialiased;
 }

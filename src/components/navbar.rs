@@ -1,47 +1,38 @@
-use crate::auth::use_auth;
 use dioxus::prelude::*;
+
+use crate::{api, auth::use_auth};
 
 #[component]
 pub fn Navbar() -> Element {
-    let auth_state = use_auth();
-    let nav = use_navigator();
+    let auth = use_auth();
+    let signed_in = auth.is_authenticated();
 
-    let handle_logout = move |_| {
-        let mut auth_state = auth_state.clone();
-        let nav = nav.clone();
+    let logout = move |_| {
+        let mut auth = auth;
         spawn(async move {
-            if let Err(e) = auth_state.logout().await {
-                tracing::error!("Logout failed: {}", e);
-            } else {
-                let _ = nav.push("/login");
+            // Ending the broker session is best-effort; the local session is
+            // cleared either way.
+            if let Some(tokens) = auth.get_tokens() {
+                let _ = api::logout_session(tokens.jwt_token, tokens.user_id).await;
+            }
+            if let Err(e) = auth.logout().await {
+                tracing::error!("Logout failed: {e}");
             }
         });
     };
 
-    let is_authenticated = auth_state.is_authenticated();
-
     rsx! {
-        header { class: "sticky top-0 z-10 bg-white dark:bg-gray-950 m-auto max-w-6xl px-4 sm:px-6 lg:px-8",
-            div { class: "flex items-center justify-between border-b border-zinc-100 py-2 text-sm dark:border-zinc-800",
-                div { class: "flex items-center gap-4 text-xl font-medium bg-clip-text bg-gradient-to-r from-red-400 to-blue-500 text-transparent",
-                    a { href: "/", "Smartrade" }
-                }
-                div { class: "flex items-center gap-4 font-semibold leading-6 text-zinc-900",
-                    if !is_authenticated {
-                        a {
-                            class: "px-2 py-1 bg-clip-text bg-gradient-to-r from-red-400 to-blue-500 text-transparent",
-                            href: "https://www.angelone.in/open-demat-account",
-                            "Open Demat Account"
-                        }
-                    }
-
-                    if is_authenticated {
-                        button {
-                            class: "px-2 py-1 text-red-500 hover:text-red-700 cursor-pointer",
-                            onclick: handle_logout,
-                            "Logout"
-                        }
-                    }
+        header { class: "flex items-center justify-between border-b border-base-300 bg-base-100 px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.5rem)]",
+            span { class: "bg-gradient-to-r from-red-400 to-blue-500 bg-clip-text text-xl font-semibold text-transparent",
+                "Smartrade"
+            }
+            if signed_in {
+                button { class: "btn btn-ghost btn-sm text-error", onclick: logout, "Logout" }
+            } else {
+                a {
+                    class: "text-sm font-semibold text-primary",
+                    href: "https://www.angelone.in/open-demat-account",
+                    "Open Demat Account"
                 }
             }
         }

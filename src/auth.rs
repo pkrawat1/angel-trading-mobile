@@ -53,6 +53,26 @@ impl AuthContext {
         }
     }
 
+    /// The session JWT, or an empty string when signed out.
+    pub fn token(&self) -> String {
+        self.get_tokens().map(|t| t.jwt_token).unwrap_or_default()
+    }
+
+    /// Turns a server-function error into display text. When the broker has
+    /// rejected the session it also signs out, which sends the layout back to
+    /// the login screen.
+    pub fn guard<T>(&self, result: Result<T, ServerFnError>) -> Result<T, String> {
+        result.map_err(|err| {
+            if crate::util::is_session_error(&err) {
+                let mut auth = *self;
+                spawn(async move {
+                    let _ = auth.logout().await;
+                });
+            }
+            crate::util::error_text(&err)
+        })
+    }
+
     pub async fn login(&mut self, tokens: AuthTokens) -> Result<(), String> {
         // Store tokens in localStorage
         store_auth_tokens(&tokens).await?;
@@ -385,19 +405,19 @@ async fn clear_tokens_file() -> Result<(), String> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn get_app_data_dir() -> Result<std::path::PathBuf, String> {
+pub(crate) fn get_app_data_dir() -> Result<std::path::PathBuf, String> {
+    #[allow(unused_imports)]
     use std::env;
-    
+
     #[cfg(target_os = "android")]
     {
-        // For Android, use app-specific storage
-        env::var("ANDROID_DATA")
-            .map(|data| std::path::PathBuf::from(data).join("angel_trading"))
-            .or_else(|_| {
-                env::var("HOME")
-                    .map(|home| std::path::PathBuf::from(home).join(".angel_trading"))
-            })
-            .map_err(|_| "Failed to determine app data directory".to_string())
+        // Android sets no HOME, and $ANDROID_DATA (/data) isn't writable. The
+        // app's private files dir is named after the package, which is also
+        // the process name.
+        let cmdline = std::fs::read_to_string("/proc/self/cmdline")
+            .map_err(|e| format!("Failed to read the process name: {e}"))?;
+        let package = cmdline.split('\0').next().unwrap_or_default();
+        Ok(std::path::PathBuf::from("/data/data").join(package).join("files"))
     }
     
     #[cfg(target_os = "ios")]
