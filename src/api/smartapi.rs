@@ -159,9 +159,10 @@ pub(super) fn build_http(
         // The client's record decides; a system proxy would change the IP
         // Angel One sees.
         None => builder.no_proxy(),
-        Some(url) => {
-            let proxy = reqwest::Proxy::all(url)
-                .map_err(|_| fail("The proxy saved for this client is not a valid URL".into()))?;
+        Some(saved) => {
+            let proxy = proxy_address(saved)
+                .and_then(|address| reqwest::Proxy::all(format!("http://{address}")).ok())
+                .ok_or_else(|| fail("The proxy saved for this client is not a valid URL".into()))?;
             builder.proxy(match (username, password) {
                 (Some(user), Some(pass)) => proxy.basic_auth(&user, &pass),
                 _ => proxy,
@@ -208,16 +209,27 @@ pub(super) fn headers(client: &ClientConfig, jwt: Option<&str>) -> HeaderMap {
 }
 
 /// Proxies are saved as URLs, with or without the scheme.
-fn proxy_host(url: &str) -> Option<String> {
-    let url = if url.contains("://") { url.to_owned() } else { format!("http://{url}") };
-    reqwest::Url::parse(&url).ok()?.host_str().map(str::to_owned)
+fn parse_proxy(saved: &str) -> Option<reqwest::Url> {
+    let url = if saved.contains("://") { saved.to_owned() } else { format!("http://{saved}") };
+    reqwest::Url::parse(&url).ok()
+}
+
+fn proxy_host(saved: &str) -> Option<String> {
+    parse_proxy(saved)?.host_str().map(str::to_owned)
+}
+
+/// Webshare ports speak only plain HTTP, even when the record says https://,
+/// so like trade_galleon this keeps just the host and port.
+fn proxy_address(saved: &str) -> Option<String> {
+    let url = parse_proxy(saved)?;
+    Some(format!("{}:{}", url.host_str()?, url.port_or_known_default()?))
 }
 
 pub(super) fn fail(message: String) -> ServerFnError {
     ServerFnError::ServerError(message)
 }
 
-async fn send(
+pub(super) async fn send(
     request: impl Fn() -> reqwest::RequestBuilder,
     retry: bool,
 ) -> Result<Value, ServerFnError> {
@@ -234,7 +246,7 @@ async fn send(
             attempt += 1;
             continue;
         }
-        break result.map_err(|e| fail(format!("Could not reach Angel One: {e}")))?;
+        break result.map_err(|e| fail(format!("Could not reach Angel One: {}", cause(&e))))?;
     };
 
     let status = response.status();
@@ -259,6 +271,26 @@ async fn send(
         Err(fail(envelope.message))
     } else {
         Err(fail(format!("{} [{}]", envelope.message, envelope.error_code)))
+    }
+}
+
+/// reqwest's own message names only the URL. What went wrong, such as the
+/// proxy refusing its credentials or a timeout, is further down the chain.
+fn cause(error: &reqwest::Error) -> String {
+    let mut causes = Vec::new();
+    let mut source = std::error::Error::source(error);
+    while let Some(error) = source {
+        let text = error.to_string();
+        // hyper's wrapper says only which stage failed, "client error (Connect)".
+        if !text.starts_with("client error (") {
+            causes.push(text);
+        }
+        source = error.source();
+    }
+    if causes.is_empty() {
+        error.to_string()
+    } else {
+        causes.join(": ")
     }
 }
 

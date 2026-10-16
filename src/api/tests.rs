@@ -853,3 +853,84 @@ fn a_proxy_that_is_not_a_url_is_refused() {
     let result = smartapi::build_http(Some("http://exa mple:80"), None, None);
     assert_eq!(message(result), "The proxy saved for this client is not a valid URL");
 }
+
+/// A proxy that answers the first request with `reply` and hands back what it
+/// received. Angel One is HTTPS, so a real proxy only ever sees a CONNECT.
+fn tunnel_proxy(reply: &'static str) -> (String, std::sync::mpsc::Receiver<String>) {
+    use std::io::{Read, Write};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    let (sender, received) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        let mut head = Vec::new();
+        let mut buf = [0; 1024];
+        while !head.ends_with(b"\r\n\r\n") {
+            match socket.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => head.extend_from_slice(&buf[..n]),
+            }
+            // A TLS handshake never ends a line, so answer it as an HTTP
+            // server would rather than wait.
+            if !head[0].is_ascii_alphabetic() {
+                break;
+            }
+        }
+        let _ = socket.write_all(reply.as_bytes());
+        let _ = sender.send(String::from_utf8_lossy(&head).into_owned());
+    });
+    (url, received)
+}
+
+const LOGIN_URL: &str = "https://angel.invalid/rest/auth/angelbroking/user/v1/loginByPassword";
+
+#[test]
+fn https_calls_open_the_tunnel_with_the_proxy_credentials() {
+    use base64::Engine;
+
+    // The stand-in closes the tunnel instead of speaking TLS, so the call
+    // itself fails once the CONNECT is through.
+    let (proxy, received) = tunnel_proxy("HTTP/1.1 200 Connection established\r\n\r\n");
+    // Characters a URL has to escape, since reqwest carries the credentials
+    // in the proxy URL until it writes the header.
+    let password = "p@ss:w/rd#?";
+    let http = smartapi::build_http(Some(&proxy), Some("webshare-user".into()), Some(password.into()))
+        .unwrap();
+    let _ = run(async { http.get(LOGIN_URL).send().await });
+
+    let head = received.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+    assert!(head.starts_with("CONNECT angel.invalid:443 HTTP/1.1\r\n"), "{head}");
+    let credentials =
+        base64::engine::general_purpose::STANDARD.encode(format!("webshare-user:{password}"));
+    let auth = head
+        .lines()
+        .find_map(|line| line.strip_prefix("Proxy-Authorization: "));
+    assert_eq!(auth, Some(format!("Basic {credentials}").as_str()), "{head}");
+}
+
+#[test]
+fn a_proxy_saved_as_https_is_spoken_to_in_plain_http() {
+    // Webshare ports speak only plain HTTP, and trade_galleon ignores the
+    // scheme, so an https:// record works in the web app. Opening TLS to the
+    // port instead fails with "record overflow".
+    let (proxy, received) = tunnel_proxy("HTTP/1.1 200 Connection established\r\n\r\n");
+    let saved = proxy.replace("http://", "https://");
+    let http = smartapi::build_http(Some(&saved), None, None).unwrap();
+    let _ = run(async { http.get(LOGIN_URL).send().await });
+
+    let head = received.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+    assert!(head.starts_with("CONNECT angel.invalid:443 HTTP/1.1\r\n"), "{head:?}");
+}
+
+#[test]
+fn an_unreachable_angel_one_says_why() {
+    let (proxy, _) = tunnel_proxy("HTTP/1.1 407 Proxy Authentication Required\r\n\r\n");
+    let http = smartapi::build_http(Some(&proxy), Some("webshare-user".into()), Some("stale".into()))
+        .unwrap();
+    let result = run(smartapi::send(|| http.get(LOGIN_URL), false));
+    assert_eq!(
+        message(result),
+        "Could not reach Angel One: tunnel error: proxy authorization required"
+    );
+}
