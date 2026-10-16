@@ -248,7 +248,13 @@ fn ExecutedOrders(orders: Vec<Order>) -> Element {
 
 #[component]
 fn ExecutedCard(order: Order) -> Element {
-    let avg = util::inr(order.average_price);
+    // Cancelled and rejected orders never filled, so the broker reports an average of zero. The web
+    // app shows the order's own price on these cards.
+    let (price_label, avg) = if order.filled_shares > 0 {
+        ("Avg", util::inr(order.average_price))
+    } else {
+        ("Price", order_price_label(&order))
+    };
     let filled = format!("{}/{} shares", order.filled_shares, order.quantity);
     let kind = format!("{} · {}", order.order_type, order.product_type);
     let time = order.update_time.clone();
@@ -262,7 +268,7 @@ fn ExecutedCard(order: Order) -> Element {
                         symbol: order.trading_symbol.clone(),
                     }
                     span { class: "text-sm tabular-nums",
-                        span { class: "mr-1 text-xs text-base-content/60", "Avg" }
+                        span { class: "mr-1 text-xs text-base-content/60", "{price_label}" }
                         "{avg}"
                     }
                 }

@@ -353,7 +353,8 @@ fn OrderForm(init: Init) -> Element {
                         button {
                             key: "{value}",
                             r#type: "button",
-                            disabled: busy(),
+                            // modifyOrder resends the original product type; the broker has no way to change it.
+                            disabled: is_edit || busy(),
                             class: if product() == value { "join-item btn btn-sm flex-1 btn-primary" } else { "join-item btn btn-sm flex-1" },
                             onclick: move |_| product.set(value.to_string()),
                             "{label}"
